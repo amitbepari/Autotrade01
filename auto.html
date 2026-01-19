@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BTC Trading Bot Monitor</title>
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      padding: 20px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    h1 { color: #58a6ff; text-align: center; }
+    .container {
+      background: #161b22;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .info { margin: 15px 0; font-size: 1.1em; }
+    button {
+      padding: 12px 24px;
+      margin: 8px;
+      font-size: 1.1em;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #start-bot { background: #238636; color: white; }
+    #start-bot:hover { background: #2ea043; }
+    #stop-bot  { background: #da3633; color: white; }
+    #stop-bot:hover  { background: #c91c11; }
+
+    .signal {
+      font-weight: bold;
+      font-size: 1.6em;
+      text-align: center;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+      min-height: 80px;
+    }
+    .buy-signal   { background: #0f5c2e; color: #aff5b4; }
+    .sell-signal  { background: #5c0f0f; color: #ffcccc; }
+    .hold-signal  { background: #5d4b00; color: #ffe599; }
+    .strong-buy   { background: #006400; color: #90ee90; box-shadow: 0 0 15px #00ff00; }
+    .strong-sell  { background: #8b0000; color: #ff9999; box-shadow: 0 0 15px #ff0000; }
+
+    #current-price { font-size: 2.4em; color: #f0b90b; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <h1>BTC/USDT Simple Trading Bot Monitor</h1>
+
+  <div class="container">
+    <div class="info">
+      Status: <span id="system-uptime">Offline: Ready</span><br>
+      Current Price: <span id="current-price">—</span>
+    </div>
+
+    <div style="text-align:center; margin:20px 0;">
+      <button id="start-bot">Start Bot</button>
+      <button id="stop-bot" disabled>Stop Bot</button>
+    </div>
+
+    <div id="signal" class="signal hold-signal">
+      Awaiting Command
+    </div>
+
+    <small style="color:#8b949e; text-align:center; display:block;">
+      Updates every 5 seconds • Very basic demo strategy • Not financial advice!
+    </small>
+  </div>
+
+  <script>
+    // ── Paste ALL your original JavaScript code here ────────────────────────
+    // (the one with startBtn, stopBtn, fetchCurrentPrice, etc.)
+
+    const startBtn = document.getElementById("start-bot");
+    const stopBtn = document.getElementById("stop-bot");
+    const currentPriceElement = document.getElementById("current-price");
+    const signalElement = document.getElementById("signal");
+    const statusElement = document.getElementById("system-uptime");
+
+    let priceHistory = [];
+    let interval;
+    let isBotRunning = false;
+    let startTime;
+
+    const API_URL = 'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT';
+
+    function formatElapsedTime(startDate) {
+      if (!startDate) return '0s';
+      const now = new Date();
+      const diff = now - startDate;
+      const seconds = String(Math.floor(diff / 1000) % 60).padStart(2, '0');
+      const minutes = String(Math.floor(diff / (1000 * 60)) % 60).padStart(2, '0');
+      const hours = String(Math.floor(diff / (1000 * 60 * 60)) % 24).padStart(2, '0');
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      let timeString = '';
+      if (days > 0) timeString += `${days}d `;
+      timeString += `${hours}:${minutes}:${seconds}`;
+      return timeString;
+    }
+
+    async function fetchCurrentPrice() {
+      if (!isBotRunning) return;
+      try {
+        statusElement.textContent = `Online: ${formatElapsedTime(startTime)}`;
+        const response = await fetch(API_URL);
+        const data = await response.json();
+        const price = parseFloat(data.price);
+        currentPriceElement.textContent = `$${price.toFixed(2)}`;
+
+        priceHistory.push(price);
+        if (priceHistory.length > 10) priceHistory.shift();
+
+        if (priceHistory.length > 2) {
+          const trend = priceHistory[priceHistory.length - 1] - priceHistory[priceHistory.length - 2];
+          signalElement.classList.remove('buy-signal','sell-signal','hold-signal','strong-buy','strong-sell');
+
+          if (trend > 0.05) {
+            signalElement.textContent = "[EXECUTE] BUY";
+            signalElement.classList.add('buy-signal');
+          } else if (trend < -0.05) {
+            signalElement.textContent = "[EXECUTE] SELL";
+            signalElement.classList.add('sell-signal');
+          } else {
+            signalElement.textContent = "[WAIT] HOLD";
+            signalElement.classList.add('hold-signal');
+          }
+        }
+      } catch (error) {
+        console.error(error);
+        stopBot();
+        statusElement.textContent = "Error – connection lost";
+      }
+    }
+
+    function startBot() {
+      if (isBotRunning) return;
+      isBotRunning = true;
+      startTime = new Date();
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      signalElement.textContent = "Analyzing...";
+      fetchCurrentPrice(); // first call immediately
+      interval = setInterval(fetchCurrentPrice, 5000);
+    }
+
+    function stopBot() {
+      isBotRunning = false;
+      clearInterval(interval);
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      priceHistory = [];
+      currentPriceElement.textContent = "—";
+      statusElement.textContent = "Offline: Ready";
+      signalElement.textContent = "Awaiting Command";
+      signalElement.className = "signal hold-signal";
+    }
+
+    // Button listeners
+    startBtn.addEventListener('click', startBot);
+    stopBtn.addEventListener('click', stopBot);
+  </script>
+</body>
+</html>
